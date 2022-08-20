@@ -630,6 +630,83 @@ function Get-WindowsInstall() {
 }
 #endregion
 
+#region - html tables
+
+function New-HtmlTable() {
+    # Helper Function: create new html table from object
+
+    param(
+        $object, 
+        $style
+    )
+
+    $htmlReport = "<!DOCTYPE html><html><head>$style</head><body><div class='wrapper'>"
+
+    $object | ForEach-Object {
+        $_.PSObject.properties.remove('title')
+        $htmlReport += $($_ | ConvertTo-Html -Fragment -As List | Out-String)
+    }
+    $htmlReport += '</div></body></html>'
+
+    $htmlReport
+}
+
+function Add-HTMLTableColumn() {
+    # Helper Function: prepend / append row to xml object
+
+    param(
+        [xml]$xml,
+        [switch]$prepend,
+        [switch]$append
+    )
+
+    # add new column by iterating through each row and prepending / appending a child 
+    $rows = $xml.SelectNodes('//tr')
+    ForEach ($row in $rows) {
+        $child = $xml.CreateElement('td')
+
+        if ($prepend) { $row.prependChild($child) | Out-Null }
+        elseif ($append) { $row.appendChild($child) | Out-Null }
+        else { Write-Warning "Neiter 'prepend' nor 'append' selected for new column" }
+    }
+
+    $xml
+}
+
+function Format-HTML() {
+    # Helper Function: conditionally format an HTML table
+
+    param(
+        [xml]$xml, 
+        $results, 
+        $desiredResults, 
+        $propertyColNum, 
+        $valueColNum, 
+        $table = $xml.html.body.div.table
+    )
+
+    for ($i = 1; $i -le ($table.tr.count - 1); $i++) {
+        # get current value and desired value so conditional formatting can be applied
+        $property = $($table.tr[$i].td[$propertyColNum]).Split(':')[0]
+        $currentValue = $($table.tr[$i].td[$valueColNum]) | Out-String
+        $desiredValue = $($desiredResults.$property) | Out-String
+
+        # "$property --> $currentValue / $desiredValue" # debug only
+        # ($currentValue -eq $desiredValue)             # debug only
+
+        # conditionally assign an attribute
+        $class = $xmlDoc.CreateAttribute('class')
+        if ($currentValue -eq $desiredValue) { $class.value = 'healthy' }
+        else { $class.value = 'warning' }
+
+        # actually set the attribute
+        $table.tr[$i].childnodes[0].attributes.append($class) | Out-Null
+    }
+
+    $xml.InnerXml
+}
+#endregion
+
 function Get-OAuthToken() {
     # Helper Function: Gets OAuth Token for API authentication
     
@@ -672,4 +749,21 @@ function Start-EvalatedService() {
         }
         else { Start-Service "$name" }
     }
+}
+
+function Join-Object() {
+    # Helper Function: join multiple objects together to output as a single html table
+
+    Param ($array)
+    
+    $newobj = New-Object PSCustomObject
+    foreach ($object in $array) {
+        foreach ( $property in $object.psobject.Properties) {
+            $newobj | Add-Member -Name $($property.Name) `
+                -Value $($property.value) `
+                -MemberType NoteProperty
+        }
+    }
+    
+    $newobj
 }
